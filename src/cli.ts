@@ -100,6 +100,9 @@ const main = defineCommand({
 
         for (const agent of Object.keys(config.agents) as IAgentType[]) {
             const agentDir = getSkillPath(config, agent)
+            if (config.global && !agentDir) {
+                continue
+            }
             const skillsPaths = await glob(`${agentDir}/**/SKILL.md`)
             if (skillsPaths.length) {
                 skillsPaths.forEach((p) => {
