@@ -1,20 +1,79 @@
 import type { IAgentType, IConfig, ISkillInfo } from '@/types.ts'
-import { basename, dirname, join } from 'node:path'
+import * as fs from 'node:fs/promises'
+import { basename, dirname, join, resolve } from 'node:path'
 import * as process from 'node:process'
-import { cancel, intro, isCancel, log, multiselect, outro } from '@clack/prompts'
+import { cancel, confirm, intro, isCancel, log, multiselect, outro } from '@clack/prompts'
 import { defineCommand, runMain } from 'citty'
 import { glob } from 'glob'
 import pc from 'picocolors'
 import { resolveConfig } from '@/config.ts'
 import { formattingSkills } from '@/skills.ts'
+import { sanitizeName } from '@/utils.ts'
 import { description, name, version } from '../package.json'
 
-const getSkillPath = (config: IConfig, agentType: IAgentType): string => {
-    const agent = config.agents[agentType]
+const getSkillPath = (config: IConfig, agentType: IAgentType | 'claude'): string => {
+    const agent = config.agents[(agentType === 'claude' ? 'claude-code' : agentType)]
 
     return config.global
         ? agent.globalSkillsDir
         : join(config.cwd, agent.skillsDir)
+}
+
+const getAgentPath = (config: IConfig, agentType: IAgentType): string => {
+    const agent = config.agents[agentType]
+    const skillPath = config.global
+        ? agent.globalSkillsDir
+        : join(config.cwd, agent.skillsDir)
+
+    return dirname(skillPath)
+}
+
+const isDirEmpty = async (dirPath: string): Promise<boolean> => {
+    try {
+        const files = await fs.readdir(dirPath)
+        const visibleFiles = files.filter(file => !file.startsWith('.'))
+        return visibleFiles.length === 0
+    }
+    catch {
+        return false
+    }
+}
+
+const shouldDeleteEmptySkillsDirs = async (emptySkillsDirs: string[]): Promise<string[]> => {
+    if (emptySkillsDirs.length === 0) {
+        return []
+    }
+
+    const agent = emptySkillsDirs.map(p => sanitizeName(basename(resolve(p, '../'))))
+
+    const confirmed = await confirm({
+        message: `${pc.yellow(`Empty 'skill' directories found under agent types: ${pc.blue(agent.join(','))}.`)}. Delete them?`,
+        initialValue: true,
+    })
+
+    if (isCancel(confirmed) || !confirmed) {
+        return []
+    }
+
+    return emptySkillsDirs
+}
+
+const shouldDeleteEmptyAgentDirs = async (emptyAgentDirs: string[]): Promise<string[]> => {
+    if (emptyAgentDirs.length === 0) {
+        return []
+    }
+    const agent = emptyAgentDirs.map(p => sanitizeName(basename(p)))
+
+    const confirmed = await confirm({
+        message: `${pc.yellow(`Found empty directories: ${pc.blue(agent.join(','))}`)}. Delete them?`,
+        initialValue: true,
+    })
+
+    if (isCancel(confirmed) || !confirmed) {
+        return []
+    }
+
+    return emptyAgentDirs
 }
 
 const main = defineCommand({
@@ -56,7 +115,6 @@ const main = defineCommand({
         }
 
         const skills = formattingSkills(skillsMap)
-        // console.log(skills)
 
         log.info(`Found ${pc.green(skillsMap.size)} skills`)
 
@@ -83,12 +141,81 @@ const main = defineCommand({
             process.exit(0)
         }
 
+        // Delete selected skills
         for (const skillKey of selectedSkill) {
             for (const skill of skills[skillKey] as ISkillInfo[]) {
-                await import('node:fs/promises').then(fs => fs.rm(skill.skillDir, {
-                    force: true,
-                    recursive: true,
-                }))
+                try {
+                    await fs.rm(skill.dirname, {
+                        force: true,
+                        recursive: true,
+                    })
+                    log.success(`Deleted ${pc.cyan(skillKey)} from ${skill.agent}`)
+                }
+                catch (error) {
+                    log.error(`Failed to delete ${skillKey} from ${skill.agent}: ${error}`)
+                }
+            }
+        }
+
+        // Check for empty skills directories
+        const emptySkillsDirs: string[] = []
+        const processedAgents = new Set<IAgentType>()
+
+        for (const skillKey of selectedSkill) {
+            for (const skill of skills[skillKey] as ISkillInfo[]) {
+                const agentType = skill.agent as IAgentType
+                if (processedAgents.has(agentType)) {
+                    continue
+                }
+                processedAgents.add(agentType)
+
+                const skillsDir = skill.skillDir
+                if (await isDirEmpty(skillsDir)) {
+                    emptySkillsDirs.push(skillsDir)
+                }
+            }
+        }
+
+        // Ask user if they want to delete empty skills directories
+        const skillsDirsToDelete = await shouldDeleteEmptySkillsDirs(emptySkillsDirs)
+        for (const dir of skillsDirsToDelete) {
+            try {
+                await fs.rm(dir, { force: true, recursive: true })
+                log.success(`Deleted empty skills directory: ${dir}`)
+            }
+            catch (error) {
+                log.error(`Failed to delete ${dir}: ${error}`)
+            }
+        }
+
+        // Check for empty agent directories (after skills dirs are deleted)
+        const emptyAgentDirs: string[] = []
+        const checkedAgents = new Set<IAgentType>()
+
+        for (const skillKey of selectedSkill) {
+            for (const skill of skills[skillKey] as ISkillInfo[]) {
+                const agentType = skill.agent as IAgentType
+                if (checkedAgents.has(agentType)) {
+                    continue
+                }
+                checkedAgents.add(agentType)
+
+                const agentDir = skill.agentPath
+                if (await isDirEmpty(agentDir)) {
+                    emptyAgentDirs.push(agentDir)
+                }
+            }
+        }
+
+        // Ask user if they want to delete empty agent directories
+        const agentDirsToDelete = await shouldDeleteEmptyAgentDirs(emptyAgentDirs)
+        for (const dir of agentDirsToDelete) {
+            try {
+                await fs.rm(dir, { force: true, recursive: true })
+                log.success(`Deleted empty agent directory: ${dir}`)
+            }
+            catch (error) {
+                log.error(`Failed to delete ${dir}: ${error}`)
             }
         }
 
