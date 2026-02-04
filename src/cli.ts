@@ -1,8 +1,11 @@
 import type { IAgentType, IConfig } from '@/types.ts'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { intro, log } from '@clack/prompts'
 import { defineCommand, runMain } from 'citty'
 import { glob } from 'glob'
+import pc from 'picocolors'
 import { resolveConfig } from '@/config.ts'
+import { formattingSkills } from '@/skills.ts'
 import { description, name, version } from '../package.json'
 
 const getSkillPath = (config: IConfig, agentType: IAgentType): string => {
@@ -28,19 +31,33 @@ const main = defineCommand({
         },
     },
     setup() {
-        console.log('welcome use clear skill cli tool')
+        intro(pc.bgCyan(` Clear Skills [v${version}]`))
     },
     async run({ args }) {
         const config = resolveConfig(args)
 
+        const skillsMap = new Map<string, Set<string>>()
+
         for (const agent of Object.keys(config.agents) as IAgentType[]) {
             const agentDir = getSkillPath(config, agent)
-            // console.log(agent, agentDir);
-            const skills = await glob(`${agentDir}/**/SKILL.md`)
-            if (skills.length) {
-                console.log(skills)
+            const skillsPaths = await glob(`${agentDir}/**/SKILL.md`)
+            if (skillsPaths.length) {
+                skillsPaths.forEach((p) => {
+                    const skillName = basename(dirname(p))
+
+                    if (!skillsMap.has(skillName)) {
+                        skillsMap.set(skillName, new Set())
+                    }
+
+                    skillsMap.get(skillName)!.add(p)
+                })
             }
         }
+
+        const skills = formattingSkills(skillsMap)
+        console.log(skills)
+
+        log.info(`Found ${pc.green(skillsMap.size)} skills`)
     },
 })
 
