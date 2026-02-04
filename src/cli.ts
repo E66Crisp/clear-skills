@@ -1,71 +1,15 @@
-import type { IAgentType, IConfig, ISkillInfo } from '@/types.ts'
+import type { IAgentType, ISkillInfo } from '@/types.ts'
 import * as fs from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname } from 'node:path'
 import * as process from 'node:process'
-import { cancel, confirm, intro, isCancel, log, multiselect, outro } from '@clack/prompts'
+import { cancel, intro, isCancel, log, multiselect, outro } from '@clack/prompts'
 import { defineCommand, runMain } from 'citty'
 import { glob } from 'glob'
 import pc from 'picocolors'
 import { resolveConfig } from '@/config.ts'
 import { formattingSkills } from '@/skills.ts'
-import { sanitizeName } from '@/utils.ts'
+import { getSkillPath, isDirEmpty, shouldDeleteEmptyAgentDirs, shouldDeleteEmptySkillsDirs } from '@/utils.ts'
 import { description, name, version } from '../package.json'
-
-const getSkillPath = (config: IConfig, agentType: IAgentType): string => {
-    const agent = config.agents[agentType]
-
-    return config.global
-        ? agent.globalSkillsDir
-        : join(config.cwd, agent.skillsDir)
-}
-
-const isDirEmpty = async (dirPath: string): Promise<boolean> => {
-    try {
-        const files = await fs.readdir(dirPath)
-        const visibleFiles = files.filter(file => !file.startsWith('.'))
-        return visibleFiles.length === 0
-    }
-    catch {
-        return false
-    }
-}
-
-const shouldDeleteEmptySkillsDirs = async (emptySkillsDirs: string[]): Promise<string[]> => {
-    if (emptySkillsDirs.length === 0) {
-        return []
-    }
-
-    const agent = emptySkillsDirs.map(p => sanitizeName(basename(resolve(p, '../'))))
-
-    const confirmed = await confirm({
-        message: `${pc.yellow(`Empty 'skill' directories found under agent types: ${pc.blue(agent.join(','))}.`)}. Delete them?`,
-        initialValue: true,
-    })
-
-    if (isCancel(confirmed) || !confirmed) {
-        return []
-    }
-
-    return emptySkillsDirs
-}
-
-const shouldDeleteEmptyAgentDirs = async (emptyAgentDirs: string[]): Promise<string[]> => {
-    if (emptyAgentDirs.length === 0) {
-        return []
-    }
-    const agent = emptyAgentDirs.map(p => sanitizeName(basename(p)))
-
-    const confirmed = await confirm({
-        message: `${pc.yellow(`Found empty directories: ${pc.blue(agent.join(','))}`)}. Delete them?`,
-        initialValue: true,
-    })
-
-    if (isCancel(confirmed) || !confirmed) {
-        return []
-    }
-
-    return emptyAgentDirs
-}
 
 const main = defineCommand({
     meta: {
