@@ -6,12 +6,14 @@ export const formattingSkills = (skills: Map<string, Set<string>>): ISkillsMap =
     const skillsArray = Array.from(skills.entries())
         .map(([skill, path]) => {
             const items = Array.from(path).map((p) => {
-                const agentRoot = resolve(dirname(p), '../..')
+                const __dirname = dirname(p)
+                const agentRoot = resolve(__dirname, '../..')
                 const agent = sanitizeName(basename(agentRoot))
                 return {
                     agent,
-                    path: agentRoot,
-                    skillDir: dirname(p),
+                    agentPath: agentRoot,
+                    dirname: __dirname,
+                    skillDir: resolve(__dirname, '../'),
                     skillMdPath: p,
                 }
             })

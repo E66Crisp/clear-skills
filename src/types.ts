@@ -62,7 +62,8 @@ export interface IConfig {
 
 export interface ISkillInfo {
     agent: string
-    path: string
+    agentPath: string
+    dirname: string
     skillDir: string
     skillMdPath: string
 }
