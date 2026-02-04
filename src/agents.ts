@@ -199,7 +199,7 @@ export const agents: Record<IAgentType, IAgentConfig> = {
         name: 'replit',
         displayName: 'Replit',
         skillsDir: '.agent/skills',
-        globalSkillsDir: undefined,
+        globalSkillsDir: '',
     },
     'roo': {
         name: 'roo',
