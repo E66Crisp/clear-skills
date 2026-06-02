@@ -2,7 +2,7 @@ import type { IAgentType, ISkillInfo } from '@/types.ts'
 import * as fs from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import * as process from 'node:process'
-import { cancel, intro, isCancel, log, multiselect, outro } from '@clack/prompts'
+import { cancel, confirm, intro, isCancel, log, multiselect, outro } from '@clack/prompts'
 import { defineCommand, runMain } from 'citty'
 import { glob } from 'glob'
 import pc from 'picocolors'
@@ -70,12 +70,21 @@ const main = defineCommand({
         const selectedSkill = await multiselect({
             message: 'Select one or more skills to delete:',
             options: selectOptions,
-            initialValues: selectOptions.map(option => option.value),
+            // initialValues: selectOptions.map(option => option.value),
             required: true,
         }) as string[]
 
         if (isCancel(selectedSkill)) {
             cancel('Operation cancelled')
+            process.exit(0)
+        }
+
+        const isConfirm = await confirm({
+            message: 'Are you sure to delete selected skills?',
+        })
+
+        if (!isConfirm) {
+            outro('Operation cancelled')
             process.exit(0)
         }
 
